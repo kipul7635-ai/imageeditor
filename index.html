@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pixel Lab — Image Editor</title>
+<style>
+  * { box-sizing: border-box; }
+
+  :root {
+    --bg: #0e1014;
+    --panel: #14171d;
+    --panel-2: #1a1e26;
+    --line: #242934;
+    --text: #e6e9ef;
+    --muted: #8b93a3;
+    --accent: #4f8cff;
+  }
+
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app { display: flex; height: 100%; }
+
+  /* ============ Sidebar ============ */
+  .panel {
+    width: 320px;
+    flex: 0 0 320px;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+  }
+
+  .brand h1 { margin: 0; font-size: 18px; letter-spacing: .3px; font-weight: 650; }
+  .brand p  { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+
+  /* Drop zone */
+  .drop {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px; border: 1.5px dashed #2f3644; border-radius: 12px;
+    cursor: pointer; background: var(--panel-2);
+    transition: border-color .15s, background .15s; user-select: none;
+  }
+  .drop:hover, .drop.dragover { border-color: var(--accent); background: #1b2432; }
+  .drop-icon { font-size: 21px; line-height: 1; }
+  .drop-text { font-size: 13px; font-weight: 550; line-height: 1.35; }
+  .drop-text small { color: var(--muted); font-weight: 400; font-size: 11px; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; background: var(--panel-2);
+    padding: 4px; border-radius: 10px; border: 1px solid var(--line);
+    flex: 0 0 auto;
+  }
+  .tab {
+    flex: 1; border: none; background: transparent; color: var(--muted);
+    font: inherit; font-size: 12.5px; font-weight: 600;
+    padding: 8px 6px; border-radius: 7px; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: #252c3a; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+
+  /* Scroll area for tab content */
+  .tab-scroll { flex: 1 1 auto; overflow-y: auto; min-height: 0; margin: 0 -6px; padding: 0 6px 4px; }
+  .tab-scroll::-webkit-scrollbar { width: 8px; }
+  .tab-scroll::-webkit-scrollbar-thumb { background: #262c37; border-radius: 4px; }
+
+  .tab-panel { display: flex; flex-direction: column; gap: 16px; }
+  .tab-panel.hidden { display: none; }
+
+  .section { display: flex; flex-direction: column; gap: 16px; }
+  .section-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); font-weight: 600;
+  }
+
+  /* Controls */
+  .control { display: flex; flex-direction: column; gap: 8px; }
+  .control-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; font-weight: 500;
+  }
+  .control-head .val {
+    font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums;
+    min-width: 34px; text-align: right;
+  }
+
+  /* Toggle switch */
+  .switch { position: relative; display: inline-block; width: 44px; height: 24px; flex: 0 0 auto; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0; background: #2a2f3a; border-radius: 999px;
+    cursor: pointer; transition: background .2s;
+  }
+  .slider::before {
+    content: ""; position: absolute; width: 18px; height: 18px;
+    left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .2s;
+  }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+
+  /* Ranges */
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; width: 100%;
+    height: 5px; border-radius: 3px; background: #2a2f3a; outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #0e1014;
+    box-shadow: 0 0 0 1px var(--accent); cursor: pointer; transition: transform .1s;
+  }
+  input[type="range"]::-webkit-slider-thumb:active { transform: scale(1.15); }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
+    border: 2px solid #0e1014; cursor: pointer;
+  }
+
+  /* Color picker */
+  .picked {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 10px; flex: 0 0 auto;
+  }
+  .swatch {
+    width: 38px; height: 38px; border-radius: 9px; flex: 0 0 auto;
+    background:
+      linear-gradient(45deg, #2a2f3a 25%, transparent 25%, transparent 75%, #2a2f3a 75%),
+      linear-gradient(45deg, #2a2f3a 25%, transparent 25%, transparent 75%, #2a2f3a 75%);
+    background-size: 10px 10px; background-position: 0 0, 5px 5px;
+    border: 1px solid #333a47; position: relative; overflow: hidden;
+  }
+  .swatch::after { content: ""; position: absolute; inset: 0; background: var(--sw, transparent); }
+  .vals { flex: 1; min-width: 0; }
+  #hex { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; font-weight: 600; letter-spacing: .5px; }
+  #rgb { font-size: 11px; margin-top: 2px; }
+  .muted { color: var(--muted); }
+
+  /* Buttons */
+  .btn {
+    border: none; border-radius: 9px; padding: 11px 14px;
+    font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+    background: var(--accent); color: #fff; transition: filter .15s, opacity .15s;
+  }
+  .btn:hover:not(:disabled) { filter: brightness(1.1); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .btn.ghost:hover { background: var(--panel-2); }
+  .btn.small { padding: 7px 10px; font-size: 12px; border-radius: 8px; }
+  .btn.full { width: 100%; }
+  .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .actions { display: flex; gap: 10px; flex: 0 0 auto; }
+  .actions .btn { flex: 1; }
+
+  /* ============ Effect cards ============ */
+  .fx {
+    border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel-2); overflow: hidden;
+  }
+  .fx-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 12px; user-select: none;
+  }
+  .fx-name { flex: 1; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .fx-chevron {
+    font-size: 11px; color: var(--muted); cursor: pointer;
+    transition: transform .18s; padding: 2px 4px;
+  }
+  .fx.collapsed .fx-chevron { transform: rotate(-90deg); }
+  .fx.collapsed .fx-body { display: none; }
+  .fx-body {
+    padding: 0 12px 12px; display: flex; flex-direction: column; gap: 13px;
+    transition: opacity .18s;
+  }
+  .fx.off .fx-body { opacity: .42; }
+  .fx.off .fx-name { color: var(--muted); }
+
+  /* ============ Stage ============ */
+  main { flex: 1; min-width: 0; display: flex; padding: 24px; overflow: hidden; }
+
+  .stage {
+    position: relative; width: 100%; height: 100%; min-height: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 14px;
+    background: repeating-conic-gradient(#15181e 0% 25%, #12151a 0% 50%) 50% / 22px 22px;
+    border: 1px solid var(--line); overflow: hidden;
+  }
+
+  #canvas {
+    display: none; max-width: 100%; max-height: 100%;
+    border-radius: 6px; cursor: crosshair;
+    box-shadow: 0 12px 40px rgba(0,0,0,.55); touch-action: none;
+  }
+  #canvas.ready { display: block; }
+
+  #overlay {
+    position: absolute; pointer-events: none; display: none;
+  }
+  #overlay.ready { display: block; }
+
+  .empty {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    text-align: center; color: var(--muted); pointer-events: none;
+  }
+  .empty div { font-size: 15px; font-weight: 600; color: #b9c0cd; }
+  .empty small { font-size: 12px; }
+
+  /* Toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 16px);
+    background: #1f2530; border: 1px solid var(--line); color: var(--text);
+    padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 550;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ============ Responsive ============ */
+  @media (max-width: 760px) {
+    .app { flex-direction: column; }
+    .panel {
+      width: 100%; flex: 0 0 auto; max-height: 54vh;
+      border-right: none; border-bottom: 1px solid var(--line);
+      padding: 14px; gap: 11px;
+    }
+    main { padding: 12px; }
+    .tab-scroll { flex: 1 1 auto; min-height: 60px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="panel">
+    <div class="brand">
+      <h1>Pixel Lab</h1>
+      <p>Upload · edit · pick colors</p>
+    </div>
+
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="image/*" hidden />
+      <span class="drop-icon">🖼️</span>
+      <span class="drop-text">Click to upload<br /><small>or drop / paste an image</small></span>
+    </label>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="adjust">Adjust</button>
+      <button class="tab" data-tab="effects">Effects</button>
+    </div>
+
+    <div class="tab-scroll">
+      <!-- ============ ADJUST TAB ============ -->
+      <div class="tab-panel" id="tab-adjust">
+        <div class="section">
+          <div class="section-title">Adjustments</div>
+
+          <div class="control">
+            <div class="control-head">
+              <label for="invert">Invert colors</label>
+              <label class="switch">
+                <input type="checkbox" id="invert" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="control">
+            <div class="control-head">
+              <label for="contrast">Contrast</label>
+              <span class="val" id="contrastVal">0</span>
+            </div>
+            <input type="range" id="contrast" min="-100" max="100" step="1" value="0" />
+          </div>
+
+          <div class="control">
+            <div class="control-head">
+              <label for="darken">Darken</label>
+              <span class="val" id="darkenVal">0</span>
+            </div>
+            <input type="range" id="darken" min="0" max="100" step="1" value="0" />
+          </div>
+
+          <div class="control">
+            <div class="control-head">
+              <label for="smooth">Smooth (denoise)</label>
+              <span class="val" id="smoothVal">0</span>
+            </div>
+            <input type="range" id="smooth" min="0" max="10" step="1" value="0" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ EFFECTS TAB (built by JS) ============ -->
+      <div class="tab-panel hidden" id="tab-effects"></div>
+    </div>
+
+    <!-- Color picker (always visible) -->
+    <div class="picked">
+      <div class="swatch" id="swatch"></div>
+      <div class="vals">
+        <div id="hex">—</div>
+        <div id="rgb" class="muted">click the image</div>
+      </div>
+      <button id="copy" class="btn small" disabled>Copy</button>
+    </div>
+
+    <div class="actions">
+      <button id="reset" class="btn ghost">Reset</button>
+      <button id="download" class="btn" disabled>Download</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="stage" id="stage">
+      <canvas id="canvas"></canvas>
+      <canvas id="overlay"></canvas>
+      <div class="empty" id="empty">
+        <div>No image yet</div>
+        <small>Upload one to get started</small>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast">Copied!</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ============================================================
+     Config
+     ============================================================ */
+  const MAX_DIM = 1600;
+
+  /* ============================================================
+     DOM
+     ============================================================ */
+  const canvas  = document.getElementById("canvas");
+  const dctx    = canvas.getContext("2d", { willReadFrequently: true });
+  const overlay = document.getElementById("overlay");
+  const octx    = overlay.getContext("2d");
+  const stage   = document.getElementById("stage");
+  const empty   = document.getElementById("empty");
+  const toast   = document.getElementById("toast");
+  const dropZone = document.getElementById("drop");
+
+  const els = {
+    file:        document.getElementById("file"),
+    invert:      document.getElementById("invert"),
+    contrast:    document.getElementById("contrast"),
+    darken:      document.getElementById("darken"),
+    smooth:      document.getElementById("smooth"),
+    contrastVal: document.getElementById("contrastVal"),
+    darkenVal:   document.getElementById("darkenVal"),
+    smoothVal:   document.getElementById("smoothVal"),
+    swatch:      document.getElementById("swatch"),
+    hex:         document.getElementById("hex"),
+    rgb:         document.getElementById("rgb"),
+    copy:        document.getElementById("copy"),
+    reset:       document.getElementById("reset"),
+    download:    document.getElementById("download")
+  };
+
+  /* ============================================================
+     State
+     ============================================================ */
+  let originalData = null;
+  let smoothCache  = { radius: -1, data: null };
+  let pickedHex    = null;
+  let rafId        = null;
+
+  const fxState   = {};
+  const CONTROL_MAP = {};
+  let circleMode  = false;
+  let dragMode    = null;      // 'move' | 'resize' | null
+
+  // Deterministic noise tile (so grain doesn't flicker between renders)
+  const NOISE = new Float32Array(256 * 256);
+  for (let i = 0; i < NOISE.length; i++) NOISE[i] = Math.random();
+
+  /* ============================================================
+     Small helpers
+     ============================================================ */
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove("show"), 1400);
+  }
+
+  const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+
+  function val(id) {
+    const el = document.getElementById(id);
+    return el ? parseFloat(el.value) : 0;
+  }
+
+  function setVal(id, v) {
+    const el = document.getElementById(id);
+    const c = CONTROL_MAP[id];
+    if (!el || !c) return;
+    const step = c.step || 1;
+    let nv = Math.round(v / step) * step;
+    nv = Math.round(nv * 100) / 100;
+    nv = clamp(nv, c.min, c.max);
+    el.value = nv;
+    const out = document.getElementById(id + "-out");
+    if (out) out.textContent = (Number.isInteger(nv) ? nv : nv.toFixed(1)) + (c.unit || "");
+  }
+
+  /* ============================================================
+     Box blur (separable, O(n)) — used for the denoise slider
+     ============================================================ */
+  function blurH(src, dst, w, h, r) {
+    const div = 2 * r + 1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) {
+          const xx = k < 0 ? 0 : (k >= w ? w - 1 : k);
+          sum += src[row + xx * 4 + ch];
+        }
+        for (let x = 0; x < w; x++) {
+          dst[row + x * 4 + ch] = sum / div;
+          const xOut = x - r < 0 ? 0 : x - r;
+          const xIn  = x + r + 1 >= w ? w - 1 : x + r + 1;
+          sum += src[row + xIn * 4 + ch] - src[row + xOut * 4 + ch];
+        }
+      }
+      for (let x = 0; x < w; x++) dst[row + x * 4 + 3] = src[row + x * 4 + 3];
+    }
+  }
+
+  function blurV(src, dst, w, h, r) {
+    const div = 2 * r + 1;
+    const stride = w * 4;
+    for (let x = 0; x < w; x++) {
+      const col = x * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        let sum = 0;
+        for (let k = -r; k <= r; k++) {
+          const yy = k < 0 ? 0 : (k >= h ? h - 1 : k);
+          sum += src[col + yy * stride + ch];
+        }
+        for (let y = 0; y < h; y++) {
+          dst[col + y * stride + ch] = sum / div;
+          const yOut = y - r < 0 ? 0 : y - r;
+          const yIn  = y + r + 1 >= h ? h - 1 : y + r + 1;
+          sum += src[col + yIn * stride + ch] - src[col + yOut * stride + ch];
+        }
+      }
+      for (let y = 0; y < h; y++) dst[col + y * stride + 3] = src[col + y * stride + 3];
+    }
+  }
+
+  function blurPixels(data, w, h, radius) {
+    const passes = radius >= 2 ? 2 : 1;
+    let a = data;
+    const b = new Uint8ClampedArray(data.length);
+    for (let p = 0; p < passes; p++) {
+      blurH(a, b, w, h, radius);
+      blurV(b, a, w, h, radius);
+    }
+    return a;
+  }
+
+  /* ============================================================
+     Effect definitions
+     ============================================================ */
+  const FX_DEFS = [
+    {
+      id: "pv",
+      name: "Pixelated Vignette",
+      controls: [
+        { id: "pvCx",    label: "Center X",       min: 0,   max: 100, step: 1,   val: 50, unit: "%" },
+        { id: "pvCy",    label: "Center Y",       min: 0,   max: 100, step: 1,   val: 50, unit: "%" },
+        { id: "pvInner", label: "Clear radius",   min: 0,   max: 150, step: 1,   val: 25, unit: "%" },
+        { id: "pvFall",  label: "Falloff",        min: 1,   max: 150, step: 1,   val: 60, unit: "%" },
+        { id: "pvCell",  label: "Max pixel size", min: 2,   max: 64,  step: 1,   val: 20, unit: "px" },
+        { id: "pvPow",   label: "Falloff curve",  min: 0.3, max: 3,   step: 0.1, val: 1 }
+      ],
+      extra: '<button class="btn ghost small full" id="pvPick">🎯 Move circle on image</button>'
+    },
+    {
+      id: "ca",
+      name: "Chromatic Aberration",
+      controls: [
+        { id: "caStr", label: "Strength", min: 0, max: 30, step: 0.5, val: 8, unit: "px" }
+      ]
+    },
+    {
+      id: "vig",
+      name: "Vignette (darken edges)",
+      controls: [
+        { id: "vigStr", label: "Strength", min: 0, max: 100, step: 1, val: 55, unit: "%" },
+        { id: "vigRad", label: "Radius",   min: 0, max: 100, step: 1, val: 40, unit: "%" }
+      ]
+    },
+    {
+      id: "post",
+      name: "Posterize",
+      controls: [
+        { id: "postLvl", label: "Levels", min: 2, max: 24, step: 1, val: 6 }
+      ]
+    },
+    {
+      id: "sepia",
+      name: "Sepia",
+      controls: [
+        { id: "sepAmt", label: "Amount", min: 0, max: 100, step: 1, val: 100, unit: "%" }
+      ]
+    },
+    {
+      id: "grain",
+      name: "Film Grain",
+      controls: [
+        { id: "grAmt", label: "Intensity", min: 0, max: 100, step: 1, val: 35, unit: "%" }
+      ]
+    },
+    {
+      id: "scan",
+      name: "Scanlines",
+      controls: [
+        { id: "scGap", label: "Spacing", min: 2, max: 16, step: 1, val: 4, unit: "px" },
+        { id: "scOp",  label: "Opacity", min: 0, max: 100, step: 1, val: 35, unit: "%" }
+      ]
+    }
+  ];
+
+  /* ---------- Build the effects UI ---------- */
+  function buildEffectsUI() {
+    const host = document.getElementById("tab-effects");
+
+    FX_DEFS.forEach(function (def) {
+      fxState[def.id] = false;
+
+      const card = document.createElement("div");
+      card.className = "fx off";
+      card.dataset.fx = def.id;
+
+      /* head */
+      const head = document.createElement("div");
+      head.className = "fx-head";
+
+      const sw = document.createElement("label");
+      sw.className = "switch";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.on = def.id;
+      const sl = document.createElement("span");
+      sl.className = "slider";
+      sw.appendChild(cb);
+      sw.appendChild(sl);
+
+      const name = document.createElement("span");
+      name.className = "fx-name";
+      name.textContent = def.name;
+
+      const chev = document.createElement("span");
+      chev.className = "fx-chevron";
+      chev.textContent = "▾";
+
+      head.appendChild(sw);
+      head.appendChild(name);
+      head.appendChild(chev);
+
+      /* body */
+      const body = document.createElement("div");
+      body.className = "fx-body";
+
+      def.controls.forEach(function (c) {
+        CONTROL_MAP[c.id] = c;
+
+        const wrap = document.createElement("div");
+        wrap.className = "control";
+
+        const chead = document.createElement("div");
+        chead.className = "control-head";
+
+        const lbl = document.createElement("label");
+        lbl.htmlFor = c.id;
+        lbl.textContent = c.label;
+
+        const out = document.createElement("span");
+        out.className = "val";
+        out.id = c.id + "-out";
+        out.textContent = c.val + (c.unit || "");
+
+        chead.appendChild(lbl);
+        chead.appendChild(out);
+
+        const inp = document.createElement("input");
+        inp.type = "range";
+        inp.id = c.id;
+        inp.min = c.min;
+        inp.max = c.max;
+        inp.step = c.step;
+        inp.value = c.val;
+
+        inp.addEventListener("input", function () {
+          out.textContent = inp.value + (c.unit || "");
+          if (!fxState[def.id]) setFxOn(def.id, true);
+          scheduleRender();
+        });
+
+        wrap.appendChild(chead);
+        wrap.appendChild(inp);
+        body.appendChild(wrap);
+      });
+
+      if (def.extra) {
+        const ex = document.createElement("div");
+        ex.innerHTML = def.extra;
+        body.appendChild(ex);
+      }
+
+      card.appendChild(head);
+      card.appendChild(body);
+
+      name.addEventListener("click", function () { card.classList.toggle("collapsed"); });
+      chev.addEventListener("click", function () { card.classList.toggle("collapsed"); });
+
+      cb.addEventListener("change", function () {
+        setFxOn(def.id, cb.checked);
+        scheduleRender();
+      });
+
+      host.appendChild(card);
+    });
+
+    /* wire the "move circle" button */
+    const pickBtn = document.getElementById("pvPick");
+    pickBtn.addEventListener("click", function () {
+      circleMode = !circleMode;
+      pickBtn.classList.toggle("active", circleMode);
+      pickBtn.textContent = circleMode ? "✕ Done moving circle" : "🎯 Move circle on image";
+
+      if (circleMode && !fxState.pv) {
+        setFxOn("pv", true);
+        scheduleRender();
+      }
+      updateCursor();
+      drawOverlay();
+    });
+  }
+
+  function setFxOn(id, on) {
+    fxState[id] = on;
+    const card = document.querySelector('.fx[data-fx="' + id + '"]');
+    if (!card) return;
+    card.classList.toggle("off", !on);
+    const cb = card.querySelector("input[data-on]");
+    if (cb) cb.checked = on;
+    if (id === "pv") updateCursor();
+  }
+
+  /* ============================================================
+     Render pipeline
+     ============================================================ */
+  function render() {
+    if (!originalData) return;
+
+    const w = originalData.width;
+    const h = originalData.height;
+
+    /* --- 1. Base pixels (with cached denoise) --- */
+    let base = originalData.data;
+    const rad = parseInt(els.smooth.value, 10);
+    if (rad > 0) {
+      if (smoothCache.radius !== rad) {
+        const copy = new Uint8ClampedArray(originalData.data);
+        smoothCache = { radius: rad, data: blurPixels(copy, w, h, rad) };
+      }
+      base = smoothCache.data;
+    }
+
+    /* --- 2. Gather adjustment + colour-effect params --- */
+    const doInvert = els.invert.checked;
+    const contrast = 1 + parseInt(els.contrast.value, 10) / 100;
+    const darken   = Math.pow(10, -parseInt(els.darken.value, 10) / 100);
+
+    const posterOn  = fxState.post;
+    const postLvl   = val("postLvl");
+    const sepiaOn   = fxState.sepia;
+    const sepiaAmt  = val("sepAmt") / 100;
+    const grainOn   = fxState.grain;
+    const grainAmt  = (val("grAmt") / 100) * 70;
+    const scanOn    = fxState.scan;
+    const scanGap   = Math.max(1, val("scGap"));
+    const scanOp    = val("scOp") / 100;
+    const vigOn     = fxState.vig;
+    const vigStr    = val("vigStr") / 100;
+    const vigRad    = val("vigRad") / 100;
+
+    const out = new ImageData(new Uint8ClampedArray(base.length), w, h);
+    const d = out.data;
+
+    const useContrast = Math.abs(contrast - 1) > 1e-6;
+    const useDarken   = Math.abs(darken - 1) > 1e-6;
+    const anyPixelFx  = doInvert || useContrast || useDarken ||
+                        posterOn || sepiaOn || grainOn || scanOn || vigOn;
+
+    const cx = w / 2, cy = h / 2;
+    const halfDiag = Math.hypot(w, h) / 2;
+    const postStep = posterOn ? 255 / (Math.max(2, postLvl) - 1) : 1;
+    const vigDenom = Math.max(1e-6, 1 - vigRad);
+
+    /* --- 3. Single per-pixel pass --- */
+    if (!anyPixelFx) {
+      d.set(base);
+    } else {
+      for (let y = 0; y < h; y++) {
+        const rdy = y - cy;
+        let i = y * w * 4;
+
+        for (let x = 0; x < w; x++, i += 4) {
+          let r = base[i], g = base[i + 1], b = base[i + 2];
+
+          if (doInvert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+
+          if (useContrast) {
+            r = (r - 128) * contrast + 128;
+            g = (g - 128) * contrast + 128;
+            b = (b - 128) * contrast + 128;
+          }
+
+          if (useDarken) { r *= darken; g *= darken; b *= darken; }
+
+          if (posterOn) {
+            r = Math.round(r / postStep) * postStep;
+            g = Math.round(g / postStep) * postStep;
+            b = Math.round(b / postStep) * postStep;
+          }
+
+          if (sepiaOn) {
+            const sr = 0.393 * r + 0.769 * g + 0.189 * b;
+            const sg = 0.349 * r + 0.686 * g + 0.168 * b;
+            const sb = 0.272 * r + 0.534 * g + 0.131 * b;
+            r += (sr - r) * sepiaAmt;
+            g += (sg - g) * sepiaAmt;
+            b += (sb - b) * sepiaAmt;
+          }
+
+          if (grainOn && grainAmt > 0) {
+            const n = (NOISE[((y & 255) << 8) | (x & 255)] - 0.5) * grainAmt;
+            r += n; g += n; b += n;
+          }
+
+          if (scanOn && (y % scanGap) === 0) {
+            const f = 1 - scanOp;
+            r *= f; g *= f; b *= f;
+          }
+
+          if (vigOn) {
+            const dx = x - cx;
+            const dist = Math.sqrt(dx * dx + rdy * rdy) / halfDiag;
+            if (dist > vigRad) {
+              let t = (dist - vigRad) / vigDenom;
+              if (t > 1) t = 1;
+              const f = 1 - t * vigStr;
+              r *= f; g *= f; b *= f;
+            }
+          }
+
+          d[i] = r; d[i + 1] = g; d[i + 2] = b;
+        }
+      }
+    }
+
+    /* --- 4. Spatial effects --- */
+    let result = out;
+
+    if (fxState.ca) {
+      result = applyChromaticAberration(result, w, h, val("caStr"));
+    }
+
+    if (fxState.pv) {
+      result = applyPixelatedVignette(result, w, h);
+    }
+
+    dctx.putImageData(result, 0, 0);
+    drawOverlay();
+  }
+
+  function scheduleRender() {
+    if (rafId) return;
+    rafId = requestAnimationFrame(function () {
+      rafId = null;
+      render();
+    });
+  }
+
+  /* ============================================================
+     Effect: chromatic aberration (radial RGB split)
+     ============================================================ */
+  function applyChromaticAberration(img, w, h, strength) {
+    const src = img.data;
+    const out = new Uint8ClampedArray(src.length);
+    const cx = w / 2, cy = h / 2;
+    const halfDiag = Math.hypot(w, h) / 2;
+
+    for (let y = 0; y < h; y++) {
+      const dy = y - cy;
+      for (let x = 0; x < w; x++) {
+        const dx = x - cx;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const k = (dist / halfDiag) * strength;
+
+        let nx = 0, ny = 0;
+        if (dist > 0.0001) { nx = dx / dist; ny = dy / dist; }
+
+        let rxi = (x + nx * k) | 0;
+        let ryi = (y + ny * k) | 0;
+        let bxi = (x - nx * k) | 0;
+        let byi = (y - ny * k) | 0;
+
+        if (rxi < 0) rxi = 0; else if (rxi >= w) rxi = w - 1;
+        if (ryi < 0) ryi = 0; else if (ryi >= h) ryi = h - 1;
+        if (bxi < 0) bxi = 0; else if (bxi >= w) bxi = w - 1;
+        if (byi < 0) byi = 0; else if (byi >= h) byi = h - 1;
+
+        const i  = (y * w + x) * 4;
+        const ri = (ryi * w + rxi) * 4;
+        const bi = (byi * w + bxi) * 4;
+
+        out[i]     = src[ri];
+        out[i + 1] = src[i + 1];
+        out[i + 2] = src[bi + 2];
+        out[i + 3] = src[i + 3];
+      }
+    }
+    return new ImageData(out, w, h);
+  }
+
+  /* ============================================================
+     Effect: pixelated vignette
+     ------------------------------------------------------------
+     Inside the "clear radius" the image is untouched.
+     Outside, pixels are replaced by the colour at the centre of
+     a square cell whose size grows with the distance from the
+     circle, up to `Max pixel size`.
+     ============================================================ */
+  function applyPixelatedVignette(img, w, h) {
+    const src = img.data;
+    const out = new Uint8ClampedArray(src.length);
+
+    const pCx     = val("pvCx") / 100;
+    const pCy     = val("pvCy") / 100;
+    const pInner  = val("pvInner") / 100;
+    const pFall   = val("pvFall") / 100;
+    const pCell   = Math.max(2, val("pvCell"));
+    const pPower  = Math.max(0.05, val("pvPow"));
+
+    const halfDiag = Math.hypot(w, h) / 2;
+    const ccx = pCx * w;
+    const ccy = pCy * h;
+    const innerR  = pInner * halfDiag;
+    const falloff = Math.max(1, pFall * halfDiag);
+
+    /* LUT: normalised ramp value -> integer cell size (kills the pow in the hot loop) */
+    const N = 1024;
+    const lut = new Uint8Array(N + 1);
+    for (let i = 0; i <= N; i++) {
+      const t = Math.pow(i / N, pPower);
+      lut[i] = Math.max(1, Math.round(1 + (pCell - 1) * t));
+    }
+
+    for (let y = 0; y < h; y++) {
+      const dy = y - ccy;
+      const row = y * w * 4;
+
+      for (let x = 0; x < w; x++) {
+        const i = row + x * 4;
+        const dx = x - ccx;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        let cs;
+        if (dist <= innerR) {
+          cs = 1;
+        } else {
+          let u = (dist - innerR) / falloff;
+          if (u > 1) u = 1;
+          cs = lut[(u * N) | 0];
+        }
+
+        if (cs === 1) {
+          out[i]     = src[i];
+          out[i + 1] = src[i + 1];
+          out[i + 2] = src[i + 2];
+          out[i + 3] = src[i + 3];
+        } else {
+          const half = cs >> 1;
+          let sx = ((x / cs) | 0) * cs + half;
+          let sy = ((y / cs) | 0) * cs + half;
+          if (sx >= w) sx = w - 1;
+          if (sy >= h) sy = h - 1;
+          const si = (sy * w + sx) * 4;
+          out[i]     = src[si];
+          out[i + 1] = src[si + 1];
+          out[i + 2] = src[si + 2];
+          out[i + 3] = src[si + 3];
+        }
+      }
+    }
+    return new ImageData(out, w, h);
+  }
+
+  /* ============================================================
+     Overlay: dashed guide circle for the pixelated vignette
+     ============================================================ */
+  function positionOverlay() {
+    if (!originalData) return;
+    const sRect = stage.getBoundingClientRect();
+    const cRect = canvas.getBoundingClientRect();
+
+    overlay.style.left   = (cRect.left - sRect.left) + "px";
+    overlay.style.top    = (cRect.top - sRect.top) + "px";
+    overlay.style.width  = cRect.width + "px";
+    overlay.style.height = cRect.height + "px";
+
+    if (overlay.width !== canvas.width || overlay.height !== canvas.height) {
+      overlay.width  = canvas.width;
+      overlay.height = canvas.height;
+    }
+    overlay.classList.add("ready");
+    drawOverlay();
+  }
+
+  function drawOverlay() {
+    octx.clearRect(0, 0, overlay.width, overlay.height);
+    if (!originalData || !fxState.pv) return;
+
+    const w = overlay.width, h = overlay.height;
+    const halfDiag = Math.hypot(w, h) / 2;
+    const cx = (val("pvCx") / 100) * w;
+    const cy = (val("pvCy") / 100) * h;
+    const r  = (val("pvInner") / 100) * halfDiag;
+
+    const lw = Math.max(1.5, w / 500);
+
+    octx.save();
+    octx.setLineDash([lw * 5, lw * 4]);
+    octx.lineWidth = lw;
+
+    // dark halo
+    octx.strokeStyle = "rgba(0,0,0,0.55)";
+    octx.beginPath(); octx.arc(cx, cy, r, 0, Math.PI * 2); octx.stroke();
+
+    // bright dashed circle
+    octx.lineDashOffset = lw * 5;
+    octx.strokeStyle = circleMode ? "rgba(79,140,255,0.95)" : "rgba(255,255,255,0.85)";
+    octx.beginPath(); octx.arc(cx, cy, r, 0, Math.PI * 2); octx.stroke();
+
+    // centre crosshair
+    octx.setLineDash([]);
+    octx.strokeStyle = "rgba(255,255,255,0.9)";
+    octx.lineWidth = lw;
+    const s = lw * 5;
+    octx.beginPath();
+    octx.moveTo(cx - s, cy); octx.lineTo(cx + s, cy);
+    octx.moveTo(cx, cy - s); octx.lineTo(cx, cy + s);
+    octx.stroke();
+    octx.restore();
+  }
+
+  /* ============================================================
+     Canvas pointer interaction
+     ============================================================ */
+  function toImageCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * canvas.width / rect.width,
+      y: (e.clientY - rect.top)  * canvas.height / rect.height
+    };
+  }
+
+  function updateCursor() {
+    if (dragMode) { canvas.style.cursor = "grabbing"; return; }
+    canvas.style.cursor = (circleMode && fxState.pv) ? "grab" : "crosshair";
+  }
+
+  function circleDrag(e) {
+    const p = toImageCoords(e);
+    const w = canvas.width, h = canvas.height;
+    const halfDiag = Math.hypot(w, h) / 2;
+
+    if (dragMode === "move") {
+      setVal("pvCx", clamp((p.x / w) * 100, 0, 100));
+      setVal("pvCy", clamp((p.y / h) * 100, 0, 100));
+    } else if (dragMode === "resize") {
+      const cx = (val("pvCx") / 100) * w;
+      const cy = (val("pvCy") / 100) * h;
+      const dist = Math.hypot(p.x - cx, p.y - cy);
+      setVal("pvInner", clamp((dist / halfDiag) * 100, 0, 150));
+    }
+    scheduleRender();
+  }
+
+  canvas.addEventListener("pointerdown", function (e) {
+    if (!originalData) return;
+    if (!circleMode || !fxState.pv) return;
+
+    const p = toImageCoords(e);
+    const w = canvas.width, h = canvas.height;
+    const halfDiag = Math.hypot(w, h) / 2;
+    const cx = (val("pvCx") / 100) * w;
+    const cy = (val("pvCy") / 100) * h;
+    const r  = (val("pvInner") / 100) * halfDiag;
+
+    dragMode = (Math.hypot(p.x - cx, p.y - cy) <= Math.max(24, r)) ? "move" : "resize";
+
+    canvas.setPointerCapture(e.pointerId);
+    updateCursor();
+    circleDrag(e);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  canvas.addEventListener("pointermove", function (e) {
+    if (dragMode) {
+      circleDrag(e);
+      e.preventDefault();
+    }
+  });
+
+  ["pointerup", "pointercancel"].forEach(function (evt) {
+    canvas.addEventListener(evt, function () {
+      if (dragMode) {
+        dragMode = null;
+        updateCursor();
+      }
+    });
+  });
+
+  /* ============================================================
+     Color picking
+     ============================================================ */
+  canvas.addEventListener("click", function (e) {
+    if (!originalData) return;
+    if (circleMode) return;   // in circle mode clicks move the circle instead
+
+    const p = toImageCoords(e);
+    const x = Math.floor(p.x), y = Math.floor(p.y);
+    if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
+
+    const px = dctx.getImageData(x, y, 1, 1).data;
+    const r = px[0], g = px[1], b = px[2];
+
+    pickedHex = "#" + [r, g, b]
+      .map(function (v) { return v.toString(16).padStart(2, "0"); })
+      .join("")
+      .toUpperCase();
+
+    els.swatch.style.setProperty("--sw", pickedHex);
+    els.hex.textContent = pickedHex;
+    els.rgb.textContent = "rgb(" + r + ", " + g + ", " + b + ") · x:" + x + " y:" + y;
+    els.rgb.classList.remove("muted");
+    els.copy.disabled = false;
+
+    copyText(pickedHex);
+  });
+
+  function copyText(text) {
+    function done() { showToast("Copied " + text); }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () { legacyCopy(text, done); });
+    } else {
+      legacyCopy(text, done);
+    }
+  }
+
+  function legacyCopy(text, cb) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(ta);
+    cb();
+  }
+
+  els.copy.addEventListener("click", function () {
+    if (pickedHex) copyText(pickedHex);
+  });
+
+  /* ============================================================
+     Image loading
+     ============================================================ */
+  function loadImageFile(file) {
+    if (!file || !file.type.startsWith("image/")) {
+      showToast("Please choose an image file");
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+
+      const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+
+      canvas.width = w;
+      canvas.height = h;
+      dctx.clearRect(0, 0, w, h);
+      dctx.drawImage(img, 0, 0, w, h);
+
+      originalData = dctx.getImageData(0, 0, w, h);
+      smoothCache = { radius: -1, data: null };
+
+      canvas.classList.add("ready");
+      empty.style.display = "none";
+      els.download.disabled = false;
+
+      render();
+      positionOverlay();
+      showToast("Image loaded");
+    };
+
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      showToast("Could not load that image");
+    };
+
+    img.src = url;
+  }
+
+  /* ============================================================
+     Controls wiring — adjustments
+     ============================================================ */
+  function syncLabels() {
+    els.contrastVal.textContent = els.contrast.value;
+    els.darkenVal.textContent   = els.darken.value;
+    els.smoothVal.textContent   = els.smooth.value;
+  }
+
+  ["contrast", "darken", "smooth"].forEach(function (id) {
+    els[id].addEventListener("input", function () {
+      syncLabels();
+      scheduleRender();
+    });
+  });
+
+  els.invert.addEventListener("change", scheduleRender);
+
+  els.file.addEventListener("change", function (e) {
+    if (e.target.files && e.target.files[0]) loadImageFile(e.target.files[0]);
+    e.target.value = "";
+  });
+
+  /* ============================================================
+     Reset
+     ============================================================ */
+  els.reset.addEventListener("click", function () {
+    els.invert.checked = false;
+    els.contrast.value = 0;
+    els.darken.value = 0;
+    els.smooth.value = 0;
+    syncLabels();
+    smoothCache = { radius: -1, data: null };
+
+    FX_DEFS.forEach(function (def) {
+      setFxOn(def.id, false);
+      def.controls.forEach(function (c) { setVal(c.id, c.val); });
+    });
+
+    circleMode = false;
+    dragMode = null;
+    const pickBtn = document.getElementById("pvPick");
+    if (pickBtn) {
+      pickBtn.classList.remove("active");
+      pickBtn.textContent = "🎯 Move circle on image";
+    }
+    updateCursor();
+    scheduleRender();
+    showToast("Reset");
+  });
+
+  /* ============================================================
+     Download
+     ============================================================ */
+  els.download.addEventListener("click", function () {
+    if (!originalData) return;
+    canvas.toBlob(function (blob) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "edited-image.png";
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+    }, "image/png");
+  });
+
+  /* ============================================================
+     Tabs
+     ============================================================ */
+  document.querySelectorAll(".tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll(".tab").forEach(function (b) {
+        b.classList.toggle("active", b === btn);
+      });
+      document.querySelectorAll(".tab-panel").forEach(function (p) {
+        p.classList.toggle("hidden", p.id !== "tab-" + btn.dataset.tab);
+      });
+      // overlay geometry may shift when the panel content height changes
+      requestAnimationFrame(positionOverlay);
+    });
+  });
+
+  /* ============================================================
+     Drag & drop + paste
+     ============================================================ */
+  ["dragenter", "dragover"].forEach(function (evt) {
+    window.addEventListener(evt, function (e) {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(function (evt) {
+    window.addEventListener(evt, function (e) {
+      e.preventDefault();
+      if (evt === "dragleave" && e.relatedTarget) return;
+      dropZone.classList.remove("dragover");
+    });
+  });
+
+  window.addEventListener("drop", function (e) {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadImageFile(f);
+  });
+
+  window.addEventListener("paste", function (e) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) { loadImageFile(f); e.preventDefault(); }
+        return;
+      }
+    }
+  });
+
+  /* ============================================================
+     Window resize
+     ============================================================ */
+  let resizeT = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(positionOverlay, 80);
+  });
+
+  /* ============================================================
+     Init
+     ============================================================ */
+  buildEffectsUI();
+  syncLabels();
+  updateCursor();
+})();
+</script>
+</body>
+</html>
